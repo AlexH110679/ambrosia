@@ -31,6 +31,7 @@ const HomeScreen = ({ navigation }) => {
   const { itemCount } = useCart();
   const { showAlert } = useAlert();
   const [products, setProducts] = useState([]);
+  const [allProducts, setAllProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeCategory, setActiveCategory] = useState('all');
@@ -78,27 +79,41 @@ const HomeScreen = ({ navigation }) => {
     }
   }, [activeCategory]);
 
-  const loadProducts = useCallback(async (cat = activeCategory, term = searchTerm) => {
+  const loadMasterCatalog = useCallback(async () => {
     try {
-      let data;
-      if (term.trim().length > 0) {
-        data = await searchProducts(term, cat);
-      } else {
-        data = await fetchProducts(cat);
-      }
-      // Sort
-      if (sortBy === 'price-low') data = [...data].sort((a, b) => a.price - b.price);
-      else if (sortBy === 'price-high') data = [...data].sort((a, b) => b.price - a.price);
-      else if (sortBy === 'name') data = [...data].sort((a, b) => a.name.localeCompare(b.name));
-      
-      setProducts(data);
+      setLoading(true);
+      const data = await fetchProducts('all');
+      setAllProducts(data);
     } catch (e) {
-      console.error('Error loading products:', e.message);
+      console.error('Error loading master catalog:', e.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [activeCategory, searchTerm, sortBy]);
+  }, []);
+
+  const filterProducts = useCallback((cat, term, sort) => {
+    let filtered = [...allProducts];
+
+    if (cat !== 'all') {
+      filtered = filtered.filter(p => p.category === cat);
+    }
+
+    if (term.trim().length > 0) {
+      const lower = term.toLowerCase();
+      filtered = filtered.filter(p => 
+        (p.name && p.name.toLowerCase().includes(lower)) || 
+        (p.type && p.type.toLowerCase().includes(lower)) || 
+        (p.description && p.description.toLowerCase().includes(lower))
+      );
+    }
+
+    if (sort === 'price-low') filtered.sort((a, b) => a.price - b.price);
+    else if (sort === 'price-high') filtered.sort((a, b) => b.price - a.price);
+    else if (sort === 'name') filtered.sort((a, b) => a.name.localeCompare(b.name));
+
+    setProducts(filtered);
+  }, [allProducts]);
 
   const handleAdminAccess = () => {
     setAdminModalVisible(true);
@@ -115,20 +130,26 @@ const HomeScreen = ({ navigation }) => {
   };
 
   useEffect(() => {
-    loadProducts(activeCategory, searchTerm);
-  }, [activeCategory, sortBy]);
+    const unsubscribe = navigation.addListener('focus', loadMasterCatalog);
+    loadMasterCatalog(); // Initial load
+    return unsubscribe;
+  }, [navigation, loadMasterCatalog]);
+
+  useEffect(() => {
+    filterProducts(activeCategory, searchTerm, sortBy);
+  }, [activeCategory, sortBy, allProducts, filterProducts]);
 
   useEffect(() => {
     const delay = setTimeout(() => {
-      loadProducts(activeCategory, searchTerm);
-    }, 350);
+      filterProducts(activeCategory, searchTerm, sortBy);
+    }, 150); // Reduced delay since it's local filtering now!
     return () => clearTimeout(delay);
-  }, [searchTerm]);
+  }, [searchTerm, filterProducts]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    loadProducts();
-  }, [loadProducts]);
+    loadMasterCatalog();
+  }, [loadMasterCatalog]);
 
   const handleProductPress = useCallback((product) => {
     navigation.navigate('ProductDetail', { product });
