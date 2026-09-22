@@ -40,6 +40,7 @@ const CartScreen = ({ navigation }) => {
     applyPromo,
     removePromo,
     markPromoAsUsed,
+    promoTarget,
   } = useCart();
   const { showAlert } = useAlert();
 
@@ -184,7 +185,10 @@ const CartScreen = ({ navigation }) => {
     });
     msg += `\n💵 *Resumen:*`;
     msg += `\nSubtotal: ${formatPrice(sub)}`;
-    if (discount > 0) msg += `\nDescuento: -${formatPrice(discount)}`;
+    if (discount > 0) {
+      const targetStr = promoTarget !== 'all' ? ` (${CATEGORY_LABELS[promoTarget] || promoTarget})` : '';
+      msg += `\nDescuento${targetStr}: -${formatPrice(discount)}`;
+    }
     if (fee > 0) msg += `\nDomicilio: ${formatPrice(fee)}`;
     msg += `\n*TOTAL A PAGAR: ${formatPrice(tot)}*\n\n`;
     msg += `📍 *Datos de Entrega:*\n`;
@@ -442,8 +446,15 @@ const CartScreen = ({ navigation }) => {
                 {promoCode ? (
                   <View style={styles.promoApplied}>
                     <Ionicons name="pricetag" size={16} color={COLORS.success} />
-                    <Text style={styles.promoAppliedText}>{promoCode} — {discountPercent}% aplicado</Text>
-                    <TouchableOpacity onPress={removePromo}>
+                    <View style={{ flex: 1, marginLeft: 8 }}>
+                      <Text style={styles.promoAppliedText}>{promoCode} — {discountPercent}% aplicado</Text>
+                      {promoTarget !== 'all' && (
+                        <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 1 }}>
+                          Solo válido para: {CATEGORY_LABELS[promoTarget] || promoTarget}
+                        </Text>
+                      )}
+                    </View>
+                    <TouchableOpacity onPress={removePromo} style={{ padding: 4 }}>
                       <Ionicons name="close-circle" size={18} color={COLORS.textMuted} />
                     </TouchableOpacity>
                   </View>
@@ -455,7 +466,7 @@ const CartScreen = ({ navigation }) => {
                       placeholderTextColor={COLORS.textMuted}
                       value={promoInput}
                       onChangeText={setPromoInput}
-                      autoCapitalize="characters"
+                      autoCapitalize="none"
                     />
                     <TouchableOpacity style={styles.promoBtn} onPress={handlePromo}>
                       <Text style={styles.promoBtnText}>Aplicar</Text>
@@ -471,7 +482,9 @@ const CartScreen = ({ navigation }) => {
                   </View>
                   {discountAmount > 0 && (
                     <View style={styles.summaryRow}>
-                      <Text style={[styles.summaryKey, { color: COLORS.success }]}>Descuento</Text>
+                      <Text style={[styles.summaryKey, { color: COLORS.success }]}>
+                        Descuento {promoTarget !== 'all' ? `(${CATEGORY_LABELS[promoTarget] || promoTarget})` : ''}
+                      </Text>
                       <Text style={[styles.summaryVal, { color: COLORS.success }]}>-{formatPrice(discountAmount)}</Text>
                     </View>
                   )}
