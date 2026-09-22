@@ -23,6 +23,7 @@ import QRCode from 'react-native-qrcode-svg';
 import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Picker } from '@react-native-picker/picker';
 import CustomAlertModal from '../components/CustomAlertModal';
 import { COLORS, SIZES, CATEGORY_LABELS, CATEGORIES } from '../constants/theme';
 import { useCart } from '../context/CartContext';
@@ -62,6 +63,7 @@ const AdminScreen = ({ navigation }) => {
   const [promosModalVisible, setPromosModalVisible] = useState(false);
   const [newPromoCode, setNewPromoCode] = useState('');
   const [newPromoPct, setNewPromoPct] = useState('');
+  const [newPromoTarget, setNewPromoTarget] = useState('all');
   
   const { baseDeliveryCost, updateDeliveryCost, promosConfig, addPromoConfig, deletePromoConfig } = useCart();
   const [newCategoryModalVisible, setNewCategoryModalVisible] = useState(false);
@@ -956,22 +958,30 @@ const AdminScreen = ({ navigation }) => {
             </View>
 
             <ScrollView style={{ maxHeight: 200, marginBottom: 20 }}>
-              {Object.keys(promosConfig || {}).map(code => (
-                <View key={code} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: COLORS.bgTertiary, padding: 12, borderRadius: 10, marginBottom: 8, borderWidth: 1, borderColor: COLORS.border }}>
-                  <View>
-                    <Text style={{ color: COLORS.gold, fontWeight: 'bold', fontSize: 16 }}>{code}</Text>
-                    <Text style={{ color: COLORS.textSecondary, fontSize: 12 }}>Descuento: {promosConfig[code]}%</Text>
+              {Object.keys(promosConfig || {}).map(code => {
+                const rule = promosConfig[code];
+                const pct = typeof rule === 'number' ? rule : rule.pct;
+                const targetId = typeof rule === 'object' ? rule.target : 'all';
+                const targetLabel = targetId === 'all' ? 'Toda la Tienda' : (allCategories.find(c => c.id === targetId)?.label || targetId);
+
+                return (
+                  <View key={code} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: COLORS.bgTertiary, padding: 12, borderRadius: 10, marginBottom: 8, borderWidth: 1, borderColor: COLORS.border }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: COLORS.gold, fontWeight: 'bold', fontSize: 16 }}>{code}</Text>
+                      <Text style={{ color: COLORS.textPrimary, fontSize: 13, marginTop: 2 }}>Descuento: {pct}%</Text>
+                      <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 1 }}>Aplica a: {targetLabel}</Text>
+                    </View>
+                    <TouchableOpacity 
+                      style={{ backgroundColor: COLORS.dangerSoft, padding: 8, borderRadius: 8, marginLeft: 10 }}
+                      onPress={async () => {
+                        await deletePromoConfig(code);
+                      }}
+                    >
+                      <Ionicons name="trash-outline" size={18} color={COLORS.danger} />
+                    </TouchableOpacity>
                   </View>
-                  <TouchableOpacity 
-                    style={{ backgroundColor: COLORS.dangerSoft, padding: 8, borderRadius: 8 }}
-                    onPress={async () => {
-                      await deletePromoConfig(code);
-                    }}
-                  >
-                    <Ionicons name="trash-outline" size={18} color={COLORS.danger} />
-                  </TouchableOpacity>
-                </View>
-              ))}
+                );
+              })}
               {(!promosConfig || Object.keys(promosConfig).length === 0) && (
                 <Text style={{ color: COLORS.textMuted, textAlign: 'center', marginTop: 10 }}>No hay códigos de descuento creados.</Text>
               )}
@@ -983,7 +993,7 @@ const AdminScreen = ({ navigation }) => {
                 style={{ flex: 1, backgroundColor: COLORS.bgTertiary, color: COLORS.textPrimary, borderRadius: 10, paddingHorizontal: 12, borderWidth: 1, borderColor: COLORS.border, fontSize: 14 }}
                 placeholder="CÓDIGO (Ej: VIP20)"
                 placeholderTextColor={COLORS.textMuted}
-                autoCapitalize="characters"
+                autoCapitalize="none"
                 value={newPromoCode}
                 onChangeText={setNewPromoCode}
               />
@@ -997,16 +1007,31 @@ const AdminScreen = ({ navigation }) => {
               />
             </View>
 
+            <View style={{ backgroundColor: COLORS.bgTertiary, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, marginBottom: 15, overflow: 'hidden' }}>
+              <Picker
+                selectedValue={newPromoTarget}
+                style={{ color: COLORS.textPrimary, height: 50, width: '100%' }}
+                dropdownIconColor={COLORS.textPrimary}
+                onValueChange={(itemValue) => setNewPromoTarget(itemValue)}
+              >
+                <Picker.Item label="Aplica a: Todo el Carrito" value="all" style={{ backgroundColor: COLORS.bgTertiary, color: COLORS.textPrimary }} />
+                {allCategories.map(cat => (
+                  <Picker.Item key={cat.id} label={`Solo para: ${cat.label}`} value={cat.id} style={{ backgroundColor: COLORS.bgTertiary, color: COLORS.textPrimary }} />
+                ))}
+              </Picker>
+            </View>
+
             <TouchableOpacity
               style={{ backgroundColor: COLORS.gold, paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
               onPress={async () => {
                 if(!newPromoCode.trim() || !newPromoPct.trim()) {
                   alert("Ingresa un código y su porcentaje."); return;
                 }
-                const success = await addPromoConfig(newPromoCode, newPromoPct);
+                const success = await addPromoConfig(newPromoCode, newPromoPct, newPromoTarget);
                 if(success) {
                   setNewPromoCode('');
                   setNewPromoPct('');
+                  setNewPromoTarget('all');
                 } else {
                   alert("Hubo un error al guardar o el porcentaje es inválido.");
                 }

@@ -56,17 +56,18 @@ const cartReducer = (state, action) => {
     }
 
     case 'CLEAR_CART':
-      return { ...state, items: [] };
+      return { ...state, items: [], promoCode: null, discountPercent: 0, promoTarget: 'all' };
 
     case 'APPLY_PROMO':
       return {
         ...state,
         promoCode: action.payload.code,
         discountPercent: action.payload.discount,
+        promoTarget: action.payload.target || 'all',
       };
 
     case 'REMOVE_PROMO':
-      return { ...state, promoCode: null, discountPercent: 0 };
+      return { ...state, promoCode: null, discountPercent: 0, promoTarget: 'all' };
 
     default:
       return state;
@@ -77,18 +78,20 @@ const initialState = {
   items: [],
   promoCode: null,
   discountPercent: 0,
+  promoTarget: 'all',
 };
 
 const DEFAULT_PROMO_CODES = {
-  THIAGO10: 10,
-  FIESTA20: 20,
-  LICOR15: 15,
+  THIAGO10: { pct: 10, target: 'all', originalCode: 'THIAGO10' },
+  FIESTA20: { pct: 20, target: 'all', originalCode: 'FIESTA20' },
+  LICOR15: { pct: 15, target: 'licores', originalCode: 'LICOR15' },
 };
 
 export const CartProvider = ({ children }) => {
   const [state, dispatch] = useReducer(cartReducer, initialState);
   const [deliveryCost, setDeliveryCost] = useState(4000);
   const [promosConfig, setPromosConfig] = useState(DEFAULT_PROMO_CODES);
+  const [usedPromos, setUsedPromos] = useState([]);
 
   useEffect(() => {
     const loadConfig = async () => {
@@ -108,8 +111,19 @@ export const CartProvider = ({ children }) => {
 
         const storedPromos = await AsyncStorage.getItem('@custom_promos');
         if (storedPromos) {
-          setPromosConfig(JSON.parse(storedPromos));
+          const parsed = JSON.parse(storedPromos);
+          // Auto migration for older number format
+          for(let k in parsed) {
+            if(typeof parsed[k] === 'number') {
+              parsed[k] = { pct: parsed[k], target: 'all', originalCode: k };
+            }
+          }
+          setPromosConfig(parsed);
         }
+
+        const storedUsed = await AsyncStorage.getItem('@used_promos_list');
+        if (storedUsed) setUsedPromos(JSON.parse(storedUsed));
+
       } catch (e) {
         console.warn('Error loading config:', e.message);
       }
@@ -117,13 +131,13 @@ export const CartProvider = ({ children }) => {
     loadConfig();
   }, []);
 
-  const addPromoConfig = async (code, percentage) => {
+  const addPromoConfig = async (code, percentage, target = 'all') => {
     try {
-      const cleanCode = code.trim().toUpperCase();
+      const cleanUpper = code.trim().toUpperCase();
       const pct = parseInt(percentage, 10);
-      if (!cleanCode || isNaN(pct) || pct <= 0 || pct > 100) return false;
+      if (!cleanUpper || isNaN(pct) || pct <= 0 || pct > 100) return false;
 
-      const updatedPromos = { ...promosConfig, [cleanCode]: pct };
+      const updatedPromos = { ...promosConfig, [cleanUpper]: { pct, target, originalCode: code.trim() } };
       setPromosConfig(updatedPromos);
       await AsyncStorage.setItem('@custom_promos', JSON.stringify(updatedPromos));
       return true;
@@ -185,21 +199,50 @@ export const CartProvider = ({ children }) => {
   }, []);
 
   const applyPromo = useCallback((code) => {
+    if(!code) return { success: false, reason: 'unrecognized' };
     const trimmed = code.trim().toUpperCase();
-    const discount = promosConfig[trimmed];
-    if (discount) {
-      dispatch({ type: 'APPLY_PROMO', payload: { code: trimmed, discount } });
-      return { success: true, discount };
+    const rule = promosConfig[trimmed];
+    
+    if (rule) {
+      if (usedPromos.includes(trimmed)) {
+        return { success: false, reason: 'used' }; // Ya fue usado
+      }
+
+      const discount = typeof rule === 'number' ? rule : rule.pct;
+      const target = typeof rule === 'object' ? rule.target : 'all';
+      const originalCode = typeof rule === 'object' ? rule.originalCode : trimmed;
+
+      dispatch({ type: 'APPLY_PROMO', payload: { code: originalCode, discount, target } });
+      return { success: true, discount, target, originalCode };
     }
-    return { success: false, availableCodes: Object.keys(promosConfig) };
-  }, [promosConfig]);
+    return { success: false, reason: 'unrecognized' };
+  }, [promosConfig, usedPromos]);
+
+  const markPromoAsUsed = async (code) => {
+    if(!code) return;
+    const clean = code.trim().toUpperCase();
+    if(!usedPromos.includes(clean)) {
+      const newUsed = [...usedPromos, clean];
+      setUsedPromos(newUsed);
+      await AsyncStorage.setItem('@used_promos_list', JSON.stringify(newUsed));
+    }
+  };
 
   const removePromo = useCallback(() => {
     dispatch({ type: 'REMOVE_PROMO' });
   }, []);
 
   const subtotal = state.items.reduce((sum, i) => sum + i.price * i.quantity, 0);
-  const discountAmount = subtotal * (state.discountPercent / 100);
+
+  // Calcula monto descuento inteligentemente (solo para target, o para todo)
+  const discountAmount = state.items.reduce((sum, item) => {
+    if (!state.promoCode || state.discountPercent === 0) return sum;
+    if (state.promoTarget === 'all' || item.category === state.promoTarget) {
+      return sum + (item.price * item.quantity * (state.discountPercent / 100));
+    }
+    return sum;
+  }, 0);
+
   const deliveryFee = subtotal > 0 ? deliveryCost : 0;
   const total = subtotal - discountAmount + deliveryFee;
   const itemCount = state.items.reduce((sum, i) => sum + i.quantity, 0);
@@ -227,6 +270,8 @@ export const CartProvider = ({ children }) => {
         promosConfig,
         addPromoConfig,
         deletePromoConfig,
+        markPromoAsUsed,
+        promoTarget: state.promoTarget,
       }}
     >
       {children}

@@ -39,6 +39,7 @@ const CartScreen = ({ navigation }) => {
     clearCart,
     applyPromo,
     removePromo,
+    markPromoAsUsed,
   } = useCart();
   const { showAlert } = useAlert();
 
@@ -133,10 +134,14 @@ const CartScreen = ({ navigation }) => {
     if (!promoInput.trim()) return;
     const result = applyPromo(promoInput);
     if (result.success) {
-      showAlert('¡Descuento aplicado!', `Código ${promoInput.toUpperCase()} activo: ${result.discount}% de descuento.`);
+      showAlert('¡Descuento aplicado!', `Código ${result.originalCode} válido: ${result.discount}% de descuento.`);
       setPromoInput('');
     } else {
-      showAlert('Código inválido', 'El código ingresado no es válido. Intenta con THIAGO10, FIESTA20 o LICOR15.');
+      if (result.reason === 'used') {
+        showAlert('Código ya utilizado', 'Este código de descuento ya fue canjeado en una compra anterior.');
+      } else {
+        showAlert('Código inválido', 'El código ingresado no existe o expiró.');
+      }
     }
   };
 
@@ -264,6 +269,10 @@ const CartScreen = ({ navigation }) => {
         ...order,
         ...tempOrderData
       });
+
+      if (promoCode) {
+        await markPromoAsUsed(promoCode);
+      }
 
       clearCart();
       removePromo();
