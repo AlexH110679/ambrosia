@@ -79,7 +79,7 @@ const initialState = {
   discountPercent: 0,
 };
 
-const PROMO_CODES = {
+const DEFAULT_PROMO_CODES = {
   THIAGO10: 10,
   FIESTA20: 20,
   LICOR15: 15,
@@ -88,13 +88,14 @@ const PROMO_CODES = {
 export const CartProvider = ({ children }) => {
   const [state, dispatch] = useReducer(cartReducer, initialState);
   const [deliveryCost, setDeliveryCost] = useState(4000);
+  const [promosConfig, setPromosConfig] = useState(DEFAULT_PROMO_CODES);
 
   useEffect(() => {
-    const loadDeliveryCost = async () => {
+    const loadConfig = async () => {
       try {
-        const stored = await AsyncStorage.getItem('@delivery_cost');
-        if (stored) {
-          const parsedStored = parseInt(stored.toString().replace(/[^0-9]/g, ''), 10);
+        const storedDelivery = await AsyncStorage.getItem('@delivery_cost');
+        if (storedDelivery) {
+          const parsedStored = parseInt(storedDelivery.toString().replace(/[^0-9]/g, ''), 10);
           if (!isNaN(parsedStored) && parsedStored >= 0) {
             setDeliveryCost(parsedStored);
           }
@@ -104,12 +105,47 @@ export const CartProvider = ({ children }) => {
           setDeliveryCost(dbFee);
           await AsyncStorage.setItem('@delivery_cost', dbFee.toString());
         }
+
+        const storedPromos = await AsyncStorage.getItem('@custom_promos');
+        if (storedPromos) {
+          setPromosConfig(JSON.parse(storedPromos));
+        }
       } catch (e) {
-        console.warn('Error loading delivery cost:', e.message);
+        console.warn('Error loading config:', e.message);
       }
     };
-    loadDeliveryCost();
+    loadConfig();
   }, []);
+
+  const addPromoConfig = async (code, percentage) => {
+    try {
+      const cleanCode = code.trim().toUpperCase();
+      const pct = parseInt(percentage, 10);
+      if (!cleanCode || isNaN(pct) || pct <= 0 || pct > 100) return false;
+
+      const updatedPromos = { ...promosConfig, [cleanCode]: pct };
+      setPromosConfig(updatedPromos);
+      await AsyncStorage.setItem('@custom_promos', JSON.stringify(updatedPromos));
+      return true;
+    } catch (e) {
+      console.error(e);
+      return false;
+    }
+  };
+
+  const deletePromoConfig = async (code) => {
+    try {
+      const cleanCode = code.trim().toUpperCase();
+      const updatedPromos = { ...promosConfig };
+      delete updatedPromos[cleanCode];
+      setPromosConfig(updatedPromos);
+      await AsyncStorage.setItem('@custom_promos', JSON.stringify(updatedPromos));
+      return true;
+    } catch (e) {
+      console.error(e);
+      return false;
+    }
+  };
 
   const updateDeliveryCost = useCallback(async (newCost) => {
     try {
@@ -150,13 +186,13 @@ export const CartProvider = ({ children }) => {
 
   const applyPromo = useCallback((code) => {
     const trimmed = code.trim().toUpperCase();
-    const discount = PROMO_CODES[trimmed];
+    const discount = promosConfig[trimmed];
     if (discount) {
       dispatch({ type: 'APPLY_PROMO', payload: { code: trimmed, discount } });
       return { success: true, discount };
     }
-    return { success: false };
-  }, []);
+    return { success: false, availableCodes: Object.keys(promosConfig) };
+  }, [promosConfig]);
 
   const removePromo = useCallback(() => {
     dispatch({ type: 'REMOVE_PROMO' });
@@ -188,6 +224,9 @@ export const CartProvider = ({ children }) => {
         removePromo,
         updateDeliveryCost,
         baseDeliveryCost: deliveryCost,
+        promosConfig,
+        addPromoConfig,
+        deletePromoConfig,
       }}
     >
       {children}

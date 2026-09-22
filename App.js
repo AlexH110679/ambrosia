@@ -118,6 +118,13 @@ const MainTabs = () => (
           <Ionicons name={focused ? 'storefront' : 'storefront-outline'} size={24} color={color} />
         ),
       }}
+      listeners={({ navigation }) => ({
+        tabPress: (e) => {
+          // Force it to pop back to the Home catalog if pressed
+          e.preventDefault();
+          navigation.navigate('Tienda', { screen: 'Home' });
+        },
+      })}
     />
     <Tab.Screen
       name="Cart"

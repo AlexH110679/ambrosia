@@ -46,7 +46,6 @@ const CATEGORY_COLORS = {
 };
 
 const AdminScreen = ({ navigation }) => {
-  const { baseDeliveryCost, updateDeliveryCost } = useCart();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -58,6 +57,13 @@ const AdminScreen = ({ navigation }) => {
 
   // Dynamic categories state
   const [allCategories, setAllCategories] = useState(CATEGORIES);
+  
+  // Promos State
+  const [promosModalVisible, setPromosModalVisible] = useState(false);
+  const [newPromoCode, setNewPromoCode] = useState('');
+  const [newPromoPct, setNewPromoPct] = useState('');
+  
+  const { baseDeliveryCost, updateDeliveryCost, promosConfig, addPromoConfig, deletePromoConfig } = useCart();
   const [newCategoryModalVisible, setNewCategoryModalVisible] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [newCatIcon, setNewCatIcon] = useState('pricetag');
@@ -870,6 +876,22 @@ const AdminScreen = ({ navigation }) => {
             </TouchableOpacity>
 
             <TouchableOpacity
+              style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border }}
+              onPress={() => {
+                setSettingsMenuVisible(false);
+                setTimeout(() => setPromosModalVisible(true), 300);
+              }}
+            >
+              <View style={{ width: 40, height: 40, borderRadius: 8, backgroundColor: COLORS.success + '22', justifyContent: 'center', alignItems: 'center', marginRight: 15 }}>
+                <Ionicons name="ticket-outline" size={20} color={COLORS.success} />
+              </View>
+              <View>
+                <Text style={{ color: COLORS.textPrimary, fontSize: 15, fontWeight: '600' }}>Códigos de Descuento</Text>
+                <Text style={{ color: COLORS.textMuted, fontSize: 12, marginTop: 2 }}>Crear y eliminar promociones</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={{ flexDirection: 'row', alignItems: 'center', padding: 16 }}
               onPress={() => {
                 setSettingsMenuVisible(false);
@@ -917,6 +939,82 @@ const AdminScreen = ({ navigation }) => {
                 <Text style={{ color: COLORS.bgPrimary, fontWeight: '700' }}>Guardar</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Promos Modal */}
+      <Modal visible={promosModalVisible} transparent animationType="slide">
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: '#1a1a22', width: '100%', maxWidth: 350, padding: 24, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, maxHeight: '80%' }}>
+            
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+              <Text style={{ color: COLORS.textPrimary, fontSize: 18, fontWeight: 'bold' }}>Promociones Activas</Text>
+              <TouchableOpacity onPress={() => setPromosModalVisible(false)}>
+                <Ionicons name="close" size={24} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 200, marginBottom: 20 }}>
+              {Object.keys(promosConfig || {}).map(code => (
+                <View key={code} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: COLORS.bgTertiary, padding: 12, borderRadius: 10, marginBottom: 8, borderWidth: 1, borderColor: COLORS.border }}>
+                  <View>
+                    <Text style={{ color: COLORS.gold, fontWeight: 'bold', fontSize: 16 }}>{code}</Text>
+                    <Text style={{ color: COLORS.textSecondary, fontSize: 12 }}>Descuento: {promosConfig[code]}%</Text>
+                  </View>
+                  <TouchableOpacity 
+                    style={{ backgroundColor: COLORS.dangerSoft, padding: 8, borderRadius: 8 }}
+                    onPress={async () => {
+                      await deletePromoConfig(code);
+                    }}
+                  >
+                    <Ionicons name="trash-outline" size={18} color={COLORS.danger} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {(!promosConfig || Object.keys(promosConfig).length === 0) && (
+                <Text style={{ color: COLORS.textMuted, textAlign: 'center', marginTop: 10 }}>No hay códigos de descuento creados.</Text>
+              )}
+            </ScrollView>
+
+            <Text style={{ color: COLORS.textPrimary, fontWeight: '600', marginBottom: 8 }}>Crear Nuevo Código</Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
+              <TextInput
+                style={{ flex: 1, backgroundColor: COLORS.bgTertiary, color: COLORS.textPrimary, borderRadius: 10, paddingHorizontal: 12, borderWidth: 1, borderColor: COLORS.border, fontSize: 14 }}
+                placeholder="CÓDIGO (Ej: VIP20)"
+                placeholderTextColor={COLORS.textMuted}
+                autoCapitalize="characters"
+                value={newPromoCode}
+                onChangeText={setNewPromoCode}
+              />
+              <TextInput
+                style={{ width: 80, backgroundColor: COLORS.bgTertiary, color: COLORS.textPrimary, borderRadius: 10, paddingHorizontal: 12, borderWidth: 1, borderColor: COLORS.border, fontSize: 14, textAlign: 'center' }}
+                placeholder="% Dcto"
+                placeholderTextColor={COLORS.textMuted}
+                keyboardType="numeric"
+                value={newPromoPct}
+                onChangeText={setNewPromoPct}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={{ backgroundColor: COLORS.gold, paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
+              onPress={async () => {
+                if(!newPromoCode.trim() || !newPromoPct.trim()) {
+                  alert("Ingresa un código y su porcentaje."); return;
+                }
+                const success = await addPromoConfig(newPromoCode, newPromoPct);
+                if(success) {
+                  setNewPromoCode('');
+                  setNewPromoPct('');
+                } else {
+                  alert("Hubo un error al guardar o el porcentaje es inválido.");
+                }
+              }}
+            >
+              <Text style={{ color: COLORS.bgPrimary, fontWeight: 'bold' }}>Agregar Promoción</Text>
+            </TouchableOpacity>
+
           </View>
         </View>
       </Modal>
