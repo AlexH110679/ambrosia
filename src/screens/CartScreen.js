@@ -56,6 +56,8 @@ const CartScreen = ({ navigation }) => {
     gpsUrl: '',
   });
   const [orderData, setOrderData] = useState(null);
+  const [whatsappConfirmVisible, setWhatsappConfirmVisible] = useState(false);
+  const [tempOrderData, setTempOrderData] = useState(null);
 
   const formatPrice = (price) =>
     new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(price);
@@ -202,34 +204,16 @@ const CartScreen = ({ navigation }) => {
     return msg;
   };
 
-  const processCheckout = async () => {
-    setCheckoutLoading(true);
+  const initiateWhatsAppFlow = async () => {
     try {
-      const order = await createOrder({
-        items,
-        subtotal,
-        discountAmount,
-        deliveryFee,
-        total,
-        promoCode,
-      });
-
       const itemsSnapshot = [...items];
       const deliverySnapshot = { ...deliveryData };
 
-      setOrderData({
-        ...order,
-        itemsSnapshot,
-        deliverySnapshot,
-        subtotal,
-        discount_amount: discountAmount,
-        delivery_fee: deliveryFee,
-        total,
-      });
+      // Creamos un ID temporal para el mensaje de WhatsApp, para no impactar inventario falso
+      const tempId = Math.floor(1000 + Math.random() * 9000); 
 
-      const ADMIN_PHONE = "573114661605";
       const msg = buildWhatsAppMessage(
-        order.id,
+        "WEB-" + tempId,
         itemsSnapshot,
         subtotal,
         discountAmount,
@@ -238,16 +222,56 @@ const CartScreen = ({ navigation }) => {
         deliverySnapshot
       );
 
-      clearCart();
-      removePromo();
-      setDeliveryModalVisible(false);
-      setReceiptVisible(true);
+      setTempOrderData({
+        itemsSnapshot,
+        deliverySnapshot,
+        subtotal,
+        discount_amount: discountAmount,
+        delivery_fee: deliveryFee,
+        total
+      });
 
-      // Open WhatsApp automatically
+      const ADMIN_PHONE = "573114661605";
+      
+      // Ocultar formulario de domicilio antes de ir a WhatsApp
+      setDeliveryModalVisible(false);
+      
+      // Abrir WhatsApp automáticamente
       await sendToWhatsApp(ADMIN_PHONE, msg);
 
+      // Mostrar modal de verificación (esperando a que regresen de WhatsApp)
+      setWhatsappConfirmVisible(true);
+
     } catch (e) {
-      showAlert('Error al procesar', e.message || 'No se pudo completar la compra. Verifica tu conexión.');
+      showAlert('Error', 'No se pudo abrir WhatsApp.');
+    }
+  };
+
+  const finalizeOrder = async () => {
+    setCheckoutLoading(true);
+    try {
+      // SOLO AHORA enviamos el pedido a la base de datos oficial
+      const order = await createOrder({
+        items: tempOrderData.itemsSnapshot,
+        subtotal: tempOrderData.subtotal,
+        discountAmount: tempOrderData.discount_amount,
+        deliveryFee: tempOrderData.delivery_fee,
+        total: tempOrderData.total,
+        promoCode,
+      });
+
+      setOrderData({
+        ...order,
+        ...tempOrderData
+      });
+
+      clearCart();
+      removePromo();
+      setWhatsappConfirmVisible(false);
+      setReceiptVisible(true);
+
+    } catch (e) {
+      showAlert('Error al procesar', e.message || 'No se pudo guardar la orden en el inventario. Verifica tu conexión.');
     } finally {
       setCheckoutLoading(false);
     }
@@ -309,7 +333,7 @@ const CartScreen = ({ navigation }) => {
       return;
     }
 
-    await processCheckout();
+    await initiateWhatsAppFlow();
   };
 
   const handleCloseReceipt = () => {
@@ -732,6 +756,69 @@ const CartScreen = ({ navigation }) => {
           </View>
         </View>
       </Modal>
+      {/* WhatsApp Sent Verification Modal */}
+      <Modal visible={whatsappConfirmVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.receiptCard, { maxWidth: '100%' }]}>
+            <LinearGradient
+              colors={[COLORS.bgTertiary, COLORS.bgSecondary]}
+              style={{ width: '100%', padding: SIZES.lg, alignItems: 'center' }}
+            >
+              <Ionicons name="chatbubbles-outline" size={40} color={COLORS.gold} style={{ marginBottom: 10 }} />
+              <Text style={[styles.receiptTitle, { textAlign: 'center' }]}>¿Enviaste el mensaje?</Text>
+              
+              <Text style={{ color: COLORS.textMuted, fontSize: 13, textAlign: 'center', marginTop: 10, lineHeight: 20 }}>
+                Para registrar tu pedido oficialmente en nuestro sistema, necesitamos confirmar que enviaste la información por WhatsApp.
+              </Text>
+
+              <View style={{ width: '100%', marginTop: 25, gap: 12 }}>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#25D366',
+                    paddingVertical: 14,
+                    width: '100%',
+                    borderRadius: 12,
+                    alignItems: 'center',
+                    flexDirection: 'row',
+                    justifyContent: 'center',
+                    gap: 8,
+                  }}
+                  onPress={finalizeOrder}
+                  disabled={checkoutLoading}
+                >
+                  {checkoutLoading ? (
+                    <ActivityIndicator color={COLORS.bgPrimary} />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle-outline" size={20} color={COLORS.bgPrimary} />
+                      <Text style={{ color: COLORS.bgPrimary, fontWeight: 'bold', fontSize: 15 }}>Sí, acabo de enviarlo</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: COLORS.bgTertiary,
+                    borderWidth: 1,
+                    borderColor: COLORS.danger,
+                    paddingVertical: 14,
+                    width: '100%',
+                    borderRadius: 12,
+                    alignItems: 'center',
+                  }}
+                  disabled={checkoutLoading}
+                  onPress={() => {
+                    setWhatsappConfirmVisible(false);
+                  }}
+                >
+                  <Text style={{ color: COLORS.danger, fontWeight: 'bold', fontSize: 15 }}>No, cancelar pedido</Text>
+                </TouchableOpacity>
+              </View>
+            </LinearGradient>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 };
